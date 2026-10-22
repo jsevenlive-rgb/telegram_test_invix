@@ -63,6 +63,21 @@ docker compose up --build
 - MinIO console: http://localhost:9001 (`minioadmin` / `minioadmin`)  
 - Temporal UI: http://localhost:8080  
 
+Несколько воркеров на одной очереди `shop-bot-queue` — Temporal отдаёт каждую activity любому свободному инстансу:
+
+```bash
+docker compose up -d --scale worker=2
+docker compose logs -f worker
+```
+
+Прод:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --scale worker=2
+```
+
+У каждой реплики свой `identity` (`hostname:pid`). В логах будет `activity start identity=...` — по нему видно, кто взял задачу. `WORKER_IDENTITY` в `.env` не обязателен и не должен быть одинаковым у всех: hostname и pid дописываются сами. Реплики должны быть в одной сети и на одном томе `invix_shop_media` (фото пишутся локально).
+
 ### 3. Сценарий в Telegram
 
 1. `/start` — бот пишет «У меня есть товар» и даёт кнопку Mini App  

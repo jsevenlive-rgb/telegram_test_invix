@@ -15,8 +15,8 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://shop:shop_secret@localhost:5432/shop_db"
 
-    # local | s3 (MinIO). Prod on iibaza uses local — MinIO images are unavailable from Hub.
-    storage_backend: str = "local"
+    # local | s3. Production uses MinIO (s3).
+    storage_backend: str = "s3"
     media_root: str = "/data/media"
 
     minio_endpoint: str = "localhost:9000"
@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     temporal_host: str = "localhost:7233"
     temporal_namespace: str = "default"
     temporal_task_queue: str = "shop-bot-queue"
+    # Optional label. Hostname and pid are always appended so replicas stay unique.
+    worker_identity: str = ""
 
     @property
     def admin_id_list(self) -> list[int]:

@@ -9,20 +9,18 @@ from aiogram.types import (
 from app.config import get_settings
 
 
-def main_menu(is_owner: bool = False) -> ReplyKeyboardMarkup:
+def main_menu(is_admin: bool = False) -> ReplyKeyboardMarkup:
     settings = get_settings()
     rows: list[list[KeyboardButton]] = [
         [
             KeyboardButton(
-                text="🛒 Открыть каталог",
+                text="Открыть каталог",
                 web_app=WebAppInfo(url=settings.webapp_url),
             )
         ],
-        [KeyboardButton(text="🏪 Создать магазин")],
     ]
-    if is_owner:
-        rows.append([KeyboardButton(text="➕ Создать товар")])
-        rows.append([KeyboardButton(text="📦 Мои магазины")])
+    if is_admin:
+        rows.append([KeyboardButton(text="Создать товар")])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
 

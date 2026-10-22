@@ -34,8 +34,6 @@ export function Catalog() {
     return (
       <div className="empty">
         Пока нет товаров.
-        <br />
-        Создай магазин в боте и размести первый товар.
       </div>
     );
   }

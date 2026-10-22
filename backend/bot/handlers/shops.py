@@ -69,7 +69,7 @@ async def receive_shop_name(message: Message, state: FSMContext) -> None:
         f"slug: `{result.slug}`\n\n"
         "Теперь нажми «Создать товар» и отправь название + фото в одном сообщении.",
         parse_mode="Markdown",
-        reply_markup=main_menu(is_owner=True),
+        reply_markup=main_menu(is_admin=settings.is_admin(message.from_user.id)),
     )
 
 
@@ -80,7 +80,7 @@ async def my_shops(message: Message) -> None:
     if not shops:
         await message.answer(
             "У тебя пока нет магазинов. Нажми «Создать магазин».",
-            reply_markup=main_menu(is_owner=False),
+            reply_markup=main_menu(is_admin=get_settings().is_admin(message.from_user.id)),
         )
         return
 
@@ -90,5 +90,5 @@ async def my_shops(message: Message) -> None:
     await message.answer(
         "\n".join(lines),
         parse_mode="Markdown",
-        reply_markup=main_menu(is_owner=True),
+        reply_markup=main_menu(is_admin=get_settings().is_admin(message.from_user.id)),
     )

@@ -104,9 +104,11 @@ services:
       temporal:
         condition: service_started
 
+  # Replicas share TEMPORAL_TASK_QUEUE. Scale: docker compose up -d --scale worker=2
   worker:
     build: ./backend
     command: python -m app.temporal.worker
+    stop_grace_period: 30s
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://shop:shop_secret@postgres:5432/shop_db

@@ -1,5 +1,5 @@
 # Production stack for iibaza VPS (network iibaza_edge + Caddy path /invix).
-# Photos: local volume (STORAGE_BACKEND=local) — MinIO Hub images unavailable.
+# Photos: MinIO S3. Public reads go through the API media proxy.
 services:
   postgres:
     image: postgres:16-alpine
@@ -13,6 +13,29 @@ services:
       - invix_shop_pg:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U shop -d shop_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.40"
+          memory: 256M
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: invix-shop-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - invix_shop_minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -77,18 +100,22 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://shop:${POSTGRES_PASSWORD}@postgres:5432/shop_db
-      STORAGE_BACKEND: local
-      MEDIA_ROOT: /data/media
+      STORAGE_BACKEND: s3
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: products
+      MINIO_SECURE: "false"
       TEMPORAL_HOST: temporal:7233
       BACKEND_URL: ${BACKEND_URL}
       WEBAPP_URL: ${WEBAPP_URL}
       API_CORS_ORIGINS: ${API_CORS_ORIGINS}
-    volumes:
-      - invix_shop_media:/data/media
     expose:
       - "8000"
     depends_on:
       postgres:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       temporal:
         condition: service_started
@@ -103,24 +130,31 @@ services:
           cpus: "0.50"
           memory: 256M
 
+  # Any number of replicas poll shop-bot-queue and can run any activity.
+  # Scale: docker compose -f docker-compose.prod.yml up -d --scale worker=2
+  # container_name is omitted: Compose requires a unique name per replica.
   worker:
     build: ./backend
     image: invix-shop-api
-    container_name: invix-shop-worker
     restart: unless-stopped
     command: python -m app.temporal.worker
+    stop_grace_period: 30s
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://shop:${POSTGRES_PASSWORD}@postgres:5432/shop_db
-      STORAGE_BACKEND: local
-      MEDIA_ROOT: /data/media
+      STORAGE_BACKEND: s3
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: products
+      MINIO_SECURE: "false"
       TEMPORAL_HOST: temporal:7233
       BACKEND_URL: ${BACKEND_URL}
       WEBAPP_URL: ${WEBAPP_URL}
-    volumes:
-      - invix_shop_media:/data/media
     depends_on:
       postgres:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       temporal:
         condition: service_started
@@ -143,15 +177,19 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://shop:${POSTGRES_PASSWORD}@postgres:5432/shop_db
-      STORAGE_BACKEND: local
-      MEDIA_ROOT: /data/media
+      STORAGE_BACKEND: s3
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: products
+      MINIO_SECURE: "false"
       TEMPORAL_HOST: temporal:7233
       BACKEND_URL: ${BACKEND_URL}
       WEBAPP_URL: ${WEBAPP_URL}
-    volumes:
-      - invix_shop_media:/data/media
     depends_on:
       postgres:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       api:
         condition: service_started
@@ -196,7 +234,7 @@ services:
 
 volumes:
   invix_shop_pg:
-  invix_shop_media:
+  invix_shop_minio:
   invix_shop_temporal_pg:
 
 networks:

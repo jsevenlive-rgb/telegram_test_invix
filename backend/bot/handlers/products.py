@@ -57,37 +57,24 @@ async def _ensure_admin_shop(message: Message) -> list[dict]:
 
 
 @router.message(Command("product"))
-@router.message(F.text == "➕ Создать товар")
+@router.message(F.text == "Создать товар")
 async def start_create_product(message: Message, state: FSMContext) -> None:
-    shops = await _user_shops(message.from_user.id)
     settings = get_settings()
-    is_admin = settings.is_admin(message.from_user.id)
-
-    if not shops and not is_admin:
+    if not settings.is_admin(message.from_user.id):
         await message.answer(
-            "Сначала создай магазин — кнопка «Создать магазин».",
-            reply_markup=main_menu(is_owner=False),
+            "У меня есть товар",
+            reply_markup=main_menu(is_admin=False),
         )
         return
 
-    if not shops and is_admin:
-        await message.answer("Создаю витрину для администратора…")
+    shops = await _user_shops(message.from_user.id)
+    if not shops:
         shops = await _ensure_admin_shop(message)
 
-    if len(shops) == 1:
-        await state.update_data(shop_id=shops[0]["id"])
-        await state.set_state(CreateProductStates.waiting_photo)
-        await message.answer(
-            f"Магазин: «{shops[0]['name']}»\n\n"
-            "Отправь одно сообщение: фото товара + название в подписи (caption).\n"
-            "Пример: прикрепи фото и напиши «Кроссовки Nike Air»."
-        )
-        return
-
-    await state.set_state(CreateProductStates.choosing_shop)
+    await state.update_data(shop_id=shops[0]["id"])
+    await state.set_state(CreateProductStates.waiting_photo)
     await message.answer(
-        "Выбери магазин для товара:",
-        reply_markup=shops_inline(shops),
+        "Отправь одно сообщение: фото товара и название в подписи."
     )
 
 
@@ -138,7 +125,7 @@ async def receive_product_photo(message: Message, state: FSMContext) -> None:
     await message.answer(
         f"✅ Товар «{result.title}» размещён на витрине!\n"
         f"Он уже в публичном каталоге Mini App.",
-        reply_markup=main_menu(is_owner=True),
+        reply_markup=main_menu(is_admin=True),
     )
 
 

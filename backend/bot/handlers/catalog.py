@@ -8,7 +8,7 @@ router = Router()
 
 
 @router.message(Command("catalog"))
-@router.message(F.text.in_({"🛒 Открыть каталог", "Каталог"}))
+@router.message(F.text.in_({"Открыть каталог", "🛒 Открыть каталог", "Каталог"}))
 async def open_catalog(message: Message) -> None:
     settings = get_settings()
     kb = InlineKeyboardMarkup(
