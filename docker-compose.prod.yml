@@ -1,0 +1,207 @@
+# Production stack for iibaza VPS (network iibaza_edge + Caddy path /invix).
+# Photos: local volume (STORAGE_BACKEND=local) — MinIO Hub images unavailable.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: invix-shop-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shop
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: shop_db
+    volumes:
+      - invix_shop_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shop -d shop_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.40"
+          memory: 256M
+
+  temporal-postgres:
+    image: postgres:16-alpine
+    container_name: invix-shop-temporal-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - invix_shop_temporal_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.40"
+          memory: 256M
+
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    container_name: invix-shop-temporal
+    restart: unless-stopped
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: temporal-postgres
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 768M
+
+  api:
+    build: ./backend
+    image: invix-shop-api
+    container_name: invix-shop-api
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://shop:${POSTGRES_PASSWORD}@postgres:5432/shop_db
+      STORAGE_BACKEND: local
+      MEDIA_ROOT: /data/media
+      TEMPORAL_HOST: temporal:7233
+      BACKEND_URL: ${BACKEND_URL}
+      WEBAPP_URL: ${WEBAPP_URL}
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS}
+    volumes:
+      - invix_shop_media:/data/media
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    networks:
+      - internal
+      - edge
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+
+  worker:
+    build: ./backend
+    image: invix-shop-api
+    container_name: invix-shop-worker
+    restart: unless-stopped
+    command: python -m app.temporal.worker
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://shop:${POSTGRES_PASSWORD}@postgres:5432/shop_db
+      STORAGE_BACKEND: local
+      MEDIA_ROOT: /data/media
+      TEMPORAL_HOST: temporal:7233
+      BACKEND_URL: ${BACKEND_URL}
+      WEBAPP_URL: ${WEBAPP_URL}
+    volumes:
+      - invix_shop_media:/data/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+
+  bot:
+    build: ./backend
+    image: invix-shop-api
+    container_name: invix-shop-bot
+    restart: unless-stopped
+    command: python -m bot.main
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://shop:${POSTGRES_PASSWORD}@postgres:5432/shop_db
+      STORAGE_BACKEND: local
+      MEDIA_ROOT: /data/media
+      TEMPORAL_HOST: temporal:7233
+      BACKEND_URL: ${BACKEND_URL}
+      WEBAPP_URL: ${WEBAPP_URL}
+    volumes:
+      - invix_shop_media:/data/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+      worker:
+        condition: service_started
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.30"
+          memory: 192M
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://iibaza.ru/invix}
+        NEXT_BASE_PATH: /invix
+    image: invix-shop-web
+    container_name: invix-shop-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    expose:
+      - "3000"
+    depends_on:
+      - api
+    networks:
+      - edge
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 320M
+
+volumes:
+  invix_shop_pg:
+  invix_shop_media:
+  invix_shop_temporal_pg:
+
+networks:
+  internal:
+    driver: bridge
+  edge:
+    external: true
+    name: iibaza_edge
